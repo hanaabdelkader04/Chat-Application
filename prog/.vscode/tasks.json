@@ -1,0 +1,45 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build server",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g",
+                "server.cpp",
+                "-o",
+                "server",
+                "-lws2_32"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "run server",
+            "type": "shell",
+            "command": "./server",
+            "dependsOn": ["build server"]
+        },
+        {
+            "label": "build client",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g",
+                "client.cpp",
+                "-o",
+                "client",
+                "-lws2_32"
+            ]
+        },
+        {
+            "label": "run client",
+            "type": "shell",
+            "command": "./client",
+            "dependsOn": ["build client"]
+        }
+    ]
+}

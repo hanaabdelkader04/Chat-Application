@@ -48,7 +48,8 @@ int main() {
         return 1;
     }
 
-    cout << "Connected successfully. Enter your messages. Type 'exit' to quit:" << endl;
+    cout << "Connected successfully to the server at 127.0.0.1:8080\n";
+    cout << "Enter your messages. Type 'exit' to quit." << endl;
 
     random_device rd;
     mt19937 gen(rd());
@@ -56,7 +57,7 @@ int main() {
 
     string input;
     while (true) {
-        cout << "Enter message: ";
+        cout << "> ";
         getline(cin, input);
         if (input == "exit") {
             break;
@@ -81,15 +82,15 @@ int main() {
             break;
         }
 
-        // Assuming server response includes key
         string response(buffer, bytesReceived);
         size_t colonPos = response.find(':');
         int receivedKey = stoi(response.substr(0, colonPos));
         string decryptedResponse = caesarEncrypt(response.substr(colonPos + 1), 26 - receivedKey);
-        cout << "Server: " << decryptedResponse << endl;
+        cout << "Received: " << decryptedResponse << endl;
     }
 
     closesocket(clientSocket);
     WSACleanup();
+    cout << "Connection closed. Exiting program." << endl;
     return 0;
 }

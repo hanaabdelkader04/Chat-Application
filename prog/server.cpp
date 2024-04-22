@@ -2,12 +2,15 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <string>
-#include <cctype>
-#include <random>
+#include <fstream>
 
 #pragma comment(lib, "Ws2_32.lib")
 
 using namespace std;
+
+const int MAX_CLIENTS = 2;  // Maximum number of clients
+SOCKET clients[MAX_CLIENTS] = { INVALID_SOCKET, INVALID_SOCKET };
+int clientCount = 0;
 
 string caesarEncrypt(const string& text, int shift) {
     string result = "";
@@ -21,102 +24,90 @@ string caesarEncrypt(const string& text, int shift) {
     return result;
 }
 
-int main() {
+void main() {
     WSADATA wsaData;
-
-    // initialize Winsock
     int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
     if (result != 0) {
         cout << "WSAStartup failed: " << result << endl;
-        return 1;
+        return;
     }
 
-    // creating socket
     SOCKET serverSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (serverSocket == INVALID_SOCKET) {
-        cout << "Socket creation failed with error: " << WSAGetLastError() << endl;
+        cout << "Socket creation failed: " << WSAGetLastError() << endl;
         WSACleanup();
-        return 1;
+        return;
     }
 
-    // specifying the address
     sockaddr_in serverAddress;
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(8080);
     serverAddress.sin_addr.s_addr = INADDR_ANY;
 
-    // binding socket
     if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == SOCKET_ERROR) {
-        cout << "Bind failed with error: " << WSAGetLastError() << endl;
+        cout << "Bind failed: " << WSAGetLastError() << endl;
         closesocket(serverSocket);
         WSACleanup();
-        return 1;
+        return;
     }
 
     cout << "Server is listening..." << endl;
-
-    // listening to the assigned socket
     if (listen(serverSocket, 5) == SOCKET_ERROR) {
-        cout << "Listen failed with error: " << WSAGetLastError() << endl;
+        cout << "Listen failed: " << WSAGetLastError() << endl;
         closesocket(serverSocket);
         WSACleanup();
-        return 1;
+        return;
     }
 
-    // accepting connection request
-    SOCKET clientSocket = accept(serverSocket, nullptr, nullptr);
-    if (clientSocket == INVALID_SOCKET) {
-        cout << "Accept failed with error: " << WSAGetLastError() << endl;
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
-    }
+    ofstream chatLog("chatlog.txt", ios::app);  // Log file for storing chat history
 
-    // loop to receive and respond to data continuously
-    cout << "Client connected, ready to receive messages." << endl;
-    random_device rd;
-    mt19937 gen(rd());
-    uniform_int_distribution<> distrib(1, 25);
-
-    while (true) {
-        char buffer[1024] = {0};
-        int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-        if (bytesReceived == SOCKET_ERROR) {
-            cout << "Receive failed with error: " << WSAGetLastError() << endl;
-            break;
-        } else if (bytesReceived == 0) {
-            cout << "Client disconnected" << endl;
-            break;
-        }
-
-        string receivedData(buffer, bytesReceived);
-        size_t colonPos = receivedData.find(':');
-        if (colonPos == string::npos) {
-            cout << "Incorrect format received." << endl;
+    while (clientCount < MAX_CLIENTS) {
+        SOCKET clientSocket = accept(serverSocket, nullptr, nullptr);
+        if (clientSocket == INVALID_SOCKET) {
+            cout << "Accept failed: " << WSAGetLastError() << endl;
             continue;
         }
 
-        int key = stoi(receivedData.substr(0, colonPos));
-        string encryptedMessage = receivedData.substr(colonPos + 1);
-        string decryptedMessage = caesarEncrypt(encryptedMessage, 26 - key);
+        clients[clientCount++] = clientSocket;
+        cout << "Client connected, total clients: " << clientCount << endl;
+    }
 
-        cout << "Decrypted message from client: " << decryptedMessage << endl;
+    char buffer[1024];
+    while (true) {
+        for (int i = 0; i < MAX_CLIENTS; ++i) {
+            memset(buffer, 0, sizeof(buffer));
+            int bytesReceived = recv(clients[i], buffer, sizeof(buffer), 0);
+            if (bytesReceived == SOCKET_ERROR) {
+                cout << "Receive failed: " << WSAGetLastError() << endl;
+                continue;
+            } else if (bytesReceived == 0) {
+                cout << "Client disconnected" << endl;
+                closesocket(clients[i]);
+                clients[i] = INVALID_SOCKET;
+                --clientCount;
+                continue;
+            }
 
-        cout << "Enter response to client: ";
-        string serverResponse;
-        getline(cin, serverResponse);
-        int responseKey = distrib(gen);
-        string encryptedResponse = to_string(responseKey) + ":" + caesarEncrypt(serverResponse, responseKey);
-        if (send(clientSocket, encryptedResponse.c_str(), encryptedResponse.length(), 0) == SOCKET_ERROR) {
-            cout << "Send failed with error: " << WSAGetLastError() << endl;
-            break;
+            string receivedData(buffer, bytesReceived);
+            chatLog << "Client " << i << ": " << receivedData << endl;  // Log message
+            cout << "Client " << i << ": " << receivedData << endl;  // Output message
+
+            // Forward message to the other client
+            for (int j = 0; j < MAX_CLIENTS; ++j) {
+                if (clients[j] != INVALID_SOCKET && j != i) {
+                    send(clients[j], receivedData.c_str(), receivedData.length(), 0);
+                }
+            }
         }
     }
-   
-    // closing the socket
-    closesocket(clientSocket);
+
+    // Cleanup on exit
+    for (int i = 0; i < MAX_CLIENTS; ++i) {
+        if (clients[i] != INVALID_SOCKET) {
+            closesocket(clients[i]);
+        }
+    }
     closesocket(serverSocket);
     WSACleanup();
-
-    return 0;
+    chatLog.close();
 }
